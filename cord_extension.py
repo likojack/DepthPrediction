@@ -10,7 +10,7 @@ import os
 #path = "/home/nico/DepthPrediction/train_1/"
 
 def normalise_x(x):
-    return abs(x-320)/320.0
+    return np.abs(x-320.0)/320.0
 def normalise_y(y):
     return y/480.0
 
@@ -50,8 +50,8 @@ for i in range(it):
         img_tmp = imread(images[marker])
         ims[j] = transformer.preprocess('data', img_tmp)
         bat_label[j] = float(label[marker])
-        xy[j][0][0][0] = normalise_x(x[marker])
-        xy[j][0][0][1] = normalise_y(y[marker])    
+        xy[j][0][0][0] = normalise_x(float(x[marker]))
+        xy[j][0][0][1] = normalise_y(float(y[marker]))    
     
     #solver.net.blobs['data'].data[...] = ims.transpose(0,3,1,2)
     solver.net.blobs['data'].data[...] = ims
