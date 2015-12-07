@@ -9,6 +9,11 @@ import pickle
 import os
 #path = "/home/nico/DepthPrediction/train_1/"
 
+def normalise_x(x):
+    return abs(x-320)/320.0
+def normalise_y(y):
+    return y/480.0
+
 with open("/home/nico/DepthPrediction/xy_extension/images_train.txt") as F1:
     images = F1.read().splitlines()
 with open("/home/nico/DepthPrediction/xy_extension/label_train.txt") as F2:
@@ -45,8 +50,8 @@ for i in range(it):
         img_tmp = imread(images[marker])
         ims[j] = transformer.preprocess('data', img_tmp)
         bat_label[j] = float(label[marker])
-        xy[j][0][0][0] = x[marker]
-        xy[j][0][0][1] = y[marker]    
+        xy[j][0][0][0] = normalise_x(x[marker])
+        xy[j][0][0][1] = normalise_y(y[marker])    
     
     #solver.net.blobs['data'].data[...] = ims.transpose(0,3,1,2)
     solver.net.blobs['data'].data[...] = ims
