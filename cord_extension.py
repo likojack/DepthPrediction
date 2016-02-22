@@ -60,6 +60,8 @@ for i in range(it):
     solver.step(1)
     train_loss[i] = solver.net.blobs['loss'].data
     
+    if(i%1000 == 0):
+	
     if(i%500 == 0):
         f = open('/home/nico/DepthPrediction/xy_extension/cord_loss_record/loss_'+str(i)+'.npy','a')
         np.save(f,train_loss)
