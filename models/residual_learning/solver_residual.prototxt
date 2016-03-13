@@ -1,6 +1,6 @@
 #net: "/home/nico/DepthPrediction/models/unary_depth_regressor/udr_euclidean_lmdb.prototxt"
 net: "/home/nico/DepthPrediction/xy_extension/models/cord_extension.prototxt"
-test_iter: 1 # Test set: 125,569 images (~490x256 batches)
+test_iter: 10 # Test set: 125,569 images (~490x256 batches)
 test_interval:10000
 # solver_type: ADAGRAD # Sure, let's try this!
 # lr for fine-tuning should be lower than when starting from scratch
@@ -8,12 +8,12 @@ base_lr: 0.0001
 lr_policy: "step"
 gamma: 0.5
 # stepsize should also be lower, as we're closer to being done
-stepsize: 10000 # Interval between learning_rate drops
+stepsize: 12000 # Interval between learning_rate drops
 display: 20
 max_iter: 200000
 momentum: 0.9
 weight_decay: 0.0005
 snapshot: 500
-snapshot_prefix: "/home/nico/DepthPrediction/xy_extension/models/snapshot_cord_scale_to_10/"
+snapshot_prefix: "/home/nico/DepthPrediction/xy_extension/models/snapshot_residual/"
 # uncomment the following to default to CPU mode solving
 # solver_mode: CPU

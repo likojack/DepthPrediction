@@ -25,7 +25,7 @@ splits = scipy.io.loadmat(splits_path)
 test_inds = splits['testNdxs']
 test_slices = np.array_split(test_inds - 1, 10)
 
-pretrained = "/home/nico/DepthPrediction/xy_extension/models/snapshot_cord/_iter_70500.caffemodel"
+pretrained = "/home/nico/DepthPrediction/xy_extension/models/snapshot_cord_redo/_iter_33000.caffemodel"
 net = "/home/nico/DepthPrediction/xy_extension/models/cord_extension_deploy.prototxt"
 CNN = caffe.Net(net, pretrained, caffe.TEST)
 
@@ -35,7 +35,7 @@ for s in test_slices:
     images = tuple(s)
     for img_ind in images:
         print "processing image: "+str(img_ind[0])
-        [image_segments, mask, segment_depths, centroids] = preprocess_image(image_set[img_ind[0]],true_depth=depths[img_ind[0]],
+        [image_segments, mask, centroids] = preprocess_image(image_set[img_ind[0]],true_depth=None,
                                                                              no_superpixels=no_superpixels, x_window_size=113,y_window_size=113,
                                                                              depth_bins=32,depth_min=0.7,depth_max=10,depth_type=0);
         transformer = caffe.io.Transformer({'data': CNN.blobs['data'].data.shape})
@@ -53,16 +53,15 @@ for s in test_slices:
             out = CNN.forward()
             out = CNN.blobs['output_neuron'].data
             output_[i] = out[0][0]
-            for i in range(len(output_)):
-                if np.isnan(output_[i]) == True:
-                    if i == 0:
-                        output_[i] = output_[i+1]
-                    output_[i] = output_[i-1]
+        for i in range(len(output_)):
+            if np.isnan(output_[i]) == True:
+                if i == 0:
+                    output_[i] = output_[i+1]
+                output_[i] = output_[i-1]
         predicted = apply_depths(output_, mask)
-        groundtruth = real_world_values(segment_depths,0.7,10,32)
-        predicted_real = real_world_values(output_,0.7,10,32)
-        loss = sqrt(mean((groundtruth - predicted_real)**2))
-        f = open('/home/nico/DepthPrediction/xy_extension/old_loss_compare.npy','a')
+        predicted_graph = real_world_values(predicted,0.7,10,32)
+        loss = np.sqrt(np.mean((predicted_graph - depths[img_ind[0]])**2))
+        f = open('/home/nico/DepthPrediction/xy_extension/extension_loss_compare_18000.npy','a')
         f.write(str(img_ind[0]) + '\n')
         f.write(str(loss) + '\n')
 

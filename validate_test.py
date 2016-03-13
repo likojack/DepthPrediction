@@ -13,6 +13,11 @@ def normalise_x(x):
 def normalise_y(y):
     return y/480.0
 
+def normalise_x_to_10(x):
+    return np.abs(x-320.0)/32.0
+def normalise_y_to_10(y):
+    return y/48.0
+
 with open("/home/nico/DepthPrediction/xy_extension/images_test.txt") as F5:
     images_validation = F5.read().splitlines()
 with open("/home/nico/DepthPrediction/xy_extension/label_test.txt") as F6:
@@ -23,12 +28,12 @@ with open("/home/nico/DepthPrediction/xy_extension/y_test.txt") as F8:
     y_validation = F8.read().splitlines()
 
 validate_num_dbims = len(images_validation)
-validate_loss = np.zeros(195)
-for i in range(1,196):
-    caffe.set_device(1)
+validate_loss = np.zeros(120)
+for i in range(1,197):
+    caffe.set_device(0)
     caffe.set_mode_gpu()
     solver = caffe.SGDSolver("/home/nico/DepthPrediction/xy_extension/models/solver_cord_extension.prototxt")
-    solver.net.copy_from("/home/nico/DepthPrediction/xy_extension/models/snapshot_cord/_iter_"+str(i*500)+".caffemodel")
+    solver.net.copy_from("/home/nico/DepthPrediction/xy_extension/models/snapshot_cord_scale_to_10/_iter_"+str(i*500)+".caffemodel")
     transformer = caffe.io.Transformer({'data': solver.net.blobs['data'].data.shape})
     transformer.set_transpose('data', (2,0,1))
     transformer.set_mean('data', np.load('/home/nico/DepthPrediction/mean.npy')) # mean pixel
@@ -46,16 +51,19 @@ for i in range(1,196):
             img_tmp = imread(images_validation[validate_marker])
             validate_img[k] = transformer.preprocess('data',img_tmp)
             validate_bat_label[k] = float(label_validation[validate_marker])
-            validate_xy[k][0][0][0] = normalise_x(float(x_validation[validate_marker]))
-            validate_xy[k][0][0][1] = normalise_x(float(y_validation[validate_marker]))
+            validate_xy[k][0][0][0] = normalise_x_to_10(float(x_validation[validate_marker]))
+            validate_xy[k][0][0][1] = normalise_y_to_10(float(y_validation[validate_marker]))
 
         solver.net.blobs['data'].data[...] = validate_img
         solver.net.blobs['label'].data[...] = validate_bat_label
         solver.net.blobs['xy'].data[...] = validate_xy
         out = solver.net.forward()
         bat_loss[j] = out['loss']
+        print "processing "+ str(j)
+        print "in "+str(i*500)+"th model"
     validate_loss[i-1] = mean(bat_loss)
-    print "processing " + str(j)
+    print "processing " + str(i)
+    
     
     f = open('/home/nico/DepthPrediction/xy_extension/validate_loss_record/loss_'+str(i*500)+'.npy','a')
     np.save(f,validate_loss)

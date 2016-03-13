@@ -25,7 +25,7 @@ splits = scipy.io.loadmat(splits_path)
 train_inds = splits['trainNdxs']
 train_slices = np.array_split(train_inds - 1,10)
 
-pretrained = "/home/nico/DepthPrediction/xy_extension/models/snapshot_cord/_iter_18000.caffemodel"
+pretrained = "/home/nico/DepthPrediction/xy_extension/models/snapshot_cord_redo/_iter_33000.caffemodel"
 net = "/home/nico/DepthPrediction/xy_extension/models/cord_extension_deploy.prototxt"
 CNN = caffe.Net(net, pretrained, caffe.TEST)
 
@@ -59,9 +59,8 @@ for s in train_slices:
                         output_[i] = output_[i+1]
                     output_[i] = output_[i-1]
         predicted = apply_depths(output_, mask)
-        groundtruth = real_world_values(segment_depths,0.7,10,32)
-        predicted_real = real_world_values(output_,0.7,10,32)
-        loss = sqrt(mean((groundtruth - predicted_real)**2))
+        predicted_graph = real_world_values(predicted,0.7,10,32)
+        loss = np.sqrt(np.mean((predicted_graph - depths[img_ind[0]])**2))
         f = open('/home/nico/DepthPrediction/xy_extension/old_trainingloss_compare_18000.npy','a')
         f.write(str(img_ind[0]) + '\n')
         f.write(str(loss) + '\n')

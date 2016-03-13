@@ -7,7 +7,6 @@ import os
 import scipy
 import matplotlib.pyplot as plt
 import pickle
-import write_h5
 
 def normalise_x(x):
     return np.abs(x-320.0)/320.0
@@ -24,24 +23,16 @@ def load_dataset(filename=None):
 	depths = nyu_set['depths']
 	return [images, depths]
 
-def log_pixelate_values(array, min_val, max_val, bins):
-	"""
-	Given an array or an hdf5 object, log_pixelate_values takes the values along
-	the array and bins them into integer values representing bins that are log
-	spaced from the min to the max value. This should work on any dimension of
-	array.
-	"""
-	cuts = np.logspace(np.log(min_val), np.log(max_val), num=(bins+1), base=np.e)
-	array_vals = np.array(array[:])
-	val = np.reshape(np.digitize(array_vals.flatten(), cuts) - 1, array.shape)
-	return val.astype(int)
 
-def real_world_values(array, min_val, max_val, bins):
-	"""
-	Take a log pixelated array in integer values or otherwise, and convert it
-	back into real world coordinates.
-	"""
-	return min_val * np.exp(array * np.log(max_val / min_val) / (bins - 1))
+def lin_pixelate_values(array, min_val, max_val, bins):
+    cuts = np.linspace(min_val,max_val,num=(bins+1))
+    array_vals = np.array(array[:])
+    val = np.reshape(np.digitize(array_vals.flatten(), cuts) - 1, array_vals.shape)
+    return val.astype(int)
+
+def real_lin_values(array, min_val, max_val, bins):    
+    return min_val + (abs(max_val-min_val)/bins)*array
+
 
 def segment_image(image=None, no_segments=500):
 	"""
@@ -193,7 +184,7 @@ def gather_depths(depths, centroids=None,
 	# 	window_average = True
 
 	# preallocate space for the depth values
-	segment_depths = np.zeros((no_segments, 1))
+	segment_depths = np.zeros((no_segments, 1),dtype=np.float32)
 
 	for depth_idx in range(0, no_segments):
 		#if mask is not None:
@@ -212,8 +203,8 @@ def gather_depths(depths, centroids=None,
 	# Convert depths to quantized logspace:
 	if (depth_bins is not None) and (depth_min is not None) and (depth_max is not None):
 		segment_depths = \
-		log_pixelate_values(segment_depths, bins=depth_bins, min_val=depth_min, max_val=depth_max)
-
+		lin_pixelate_values(segment_depths, bins=depth_bins, min_val=depth_min, max_val=depth_max)
+        
 	return segment_depths
 
 
@@ -393,6 +384,7 @@ def apply_depths(segment_depths, mask):
 	return depth_image
 
 def create_segments_directory(
+	mean = None, 
 	input_filename=None,
 	image_output_filepath=None,
 	no_superpixels=200,
@@ -400,7 +392,7 @@ def create_segments_directory(
 	y_window_size=10,
 	images=None,
 	depth_bins=None, depth_min = None, depth_max=None, depth_type=0,
-	output_images=True, index_name='index.txt', test=False):
+	output_images=False, index_name='index.txt', test=False):
 	"""
 	outputs a directory of image segments, with index file.
 	"""
@@ -415,145 +407,42 @@ def create_segments_directory(
 	# no_segments = no_superpixels * len(images)
 
 	print "image_set shape: ", image_set.shape
-	# Create output directory
-	if not os.path.exists(image_output_filepath):
-		os.makedirs(image_output_filepath)
-	out_log = open(image_output_filepath + '/' + index_name,'a')
+
 	if(test==False):
-		out_img = open("/home/nico/DepthPrediction/xy_extension/images_train.txt",'a')
-		out_label = open("/home/nico/DepthPrediction/xy_extension/label_train.txt",'a')
-		out_x = open("/home/nico/DepthPrediction/xy_extension/x_train.txt",'a')
-		out_y = open("/home/nico/DepthPrediction/xy_extension/y_train.txt",'a')
+		out_img = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/images_train.txt",'a')
+		out_label = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/label_train.txt",'a')
+		out_x = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/x_train.txt",'a')
+		out_y = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/y_train.txt",'a')
 	if(test==True):
-		out_img = open("/home/nico/DepthPrediction/xy_extension/images_test.txt",'a')
-		out_label = open("/home/nico/DepthPrediction/xy_extension/label_test.txt",'a')
-		out_x = open("/home/nico/DepthPrediction/xy_extension/x_test.txt",'a')
-		out_y = open("/home/nico/DepthPrediction/xy_extension/y_test.txt",'a')        
+		out_img = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/images_test.txt",'a')
+		out_label = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/label_test.txt",'a')
+		out_x = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/x_test.txt",'a')
+		out_y = open("/home/nico/DepthPrediction/xy_extension/residual_learning/quantized_data/y_test.txt",'a')        
 
 	for image_idx in images:
 
 		print 'processing image', image_idx
 		
 		# Preprocess image 
-		[image_segments, mask, segment_depths, centroids] = preprocess_image(image_set[image_idx[0]],true_depth=depths[image_idx[0]],
-			no_superpixels=no_superpixels, x_window_size=x_window_size,y_window_size=y_window_size,
-			depth_bins=depth_bins,depth_min=depth_min,depth_max=depth_max,depth_type=depth_type);
-
-
-        
-        
+		residual_depth = depths[image_idx[0]] - mean
+		[image_segments, mask,segment_depths,centroids] = preprocess_image(image_set[image_idx[0]], true_depth=residual_depth,
+           no_superpixels=400, x_window_size=113, y_window_size=113, depth_bins=32,depth_min=-3.2,depth_max=7.6,depth_type=0)
 		for i in range(image_segments.shape[0]):
 			name = str(image_idx) + '_' + str(i) + '.jpg'
-
+            
 			# write image
 			if output_images:
+				if not os.path.exists(image_output_filepath):
+					os.makedirs(image_output_filepath)
+				out_log = open(image_output_filepath + '/' + index_name,'a')
 				scipy.misc.imsave(image_output_filepath + '/' + name,np.transpose(image_segments[i, ...],(0,2,1)))
-                
-			out_log.write(name + ' ' + str(int(segment_depths[i])) + '\n')
             
 			out_img.write(image_output_filepath + '/' + name + '\n')            
-			out_label.write(str(int(segment_depths[i])) + '\n')
+			out_label.write(str(segment_depths[i][0]) + '\n')
 			out_x.write(str(int(centroids[0,i])) + '\n')
 			out_y.write(str(int(centroids[1,i])) + '\n')
-
-def create_h5_dataset(
-    transformer,
-	input_filename=None,
-	image_output_filepath=None,
-	no_superpixels=200,
-	x_window_size=10,
-	y_window_size=10,
-	images=None,
-	depth_bins=None, depth_min = None, depth_max=None, depth_type=0, nbat = None):
-    if images == None:
-        print "input is not image!!!"
-        images = range(0, image_set.shape[0])
-    if type(images) is not tuple:
-        images = range(0, images)
-        
-    [image_set, depths] = load_dataset(input_filename)
-    # no_segments = no_superpixels * len(images)
-
-    mean = np.load("/home/nico/DepthPrediction/xy_extension/mean.npy")
-    print "image_set shape: ", image_set.shape
-    # Create output directory
-    if not os.path.exists(image_output_filepath):
-        os.makedirs(image_output_filepath)
-    ##preprocessing the data
-    X = list()
-    depth = list()
-    x = list()
-    y = list()
-    for i in range(len(images)):
-        print 'processing image', images[i][0]
-        [image_segments, mask, segment_depths, centroids] = preprocess_image(image_set[images[i][0]],true_depth=depths[images[i][0]],
-			no_superpixels=no_superpixels, x_window_size=x_window_size,y_window_size=y_window_size,
-			depth_bins=depth_bins,depth_min=depth_min,depth_max=depth_max,depth_type=depth_type);
-        #preprocess image to fit caffe input format
-        input_segment = np.zeros((image_segments.shape),dtype=np.float32)
-        for it in range(len(image_segments)):
-            input_segment[it] = transformer.preprocess('data',image_segments[it].transpose(2,1,0))
-            
-            
-        for ind in range(len(image_segments)):
-            X.append(input_segment[ind])
-            depth.append(segment_depths[ind])
-            x.append(normalise_x(centroids[0,ind]))
-            y.append(normalise_y(centroids[1,ind]))
-    ##write into file 
-    
-    image_patch = np.zeros((len(X),3,2*x_window_size+1,2*x_window_size+1),dtype = np.float32)
-    label = np.zeros((len(depth),1,1,1),dtype=np.float32)
-    xy = np.zeros((len(x),1,6,6),dtype=np.float32)# 6 is because the size of pool_5 layer
-    for i in range(len(X)):
-        image_patch[i] = X[i]
-        label[i] = depth[i]
-        xy[i][0][0][0] = x[i]
-        xy[i][0][0][1] = y[i]
-
-    write_h5.write_h5(image_output_filepath+'train_'+str(nbat)+'.h5', 'image',image_patch)
-    write_h5.write_h5(image_output_filepath+'train_'+str(nbat)+'.h5', 'label',label)
-    write_h5.write_h5(image_output_filepath+'train_'+str(nbat)+'.h5', 'xy',xy)
-    
-    
-    out_log = open(image_output_filepath+"h5_directory.txt",'a')
-    out_log.write(image_output_filepath+'train_'+str(nbat)+'.h5'+'\n')
-    
-    
         
 
-def find_neighbors(mask):
-    """
-    Generates a list of edges that connect neighboring superpixels that
-    connect each other from a segmentation mask.
-    Returns a Nx2 np.array of edges.
-    """
-    # Generate a symmetric matrix with a one representing a neighboring
-    # connection
-    no_pixels=len(np.unique(mask))
-    adjacent = np.zeros((no_pixels,no_pixels), dtype=bool)
-    for idx_x in range(0, mask.shape[0]-1):
-        for idx_y in range(0, mask.shape[1]-1):
-            # Check left to right
-            if mask[idx_x][idx_y] != mask[idx_x+1][idx_y]:
-                adjacent[mask[idx_x][idx_y], mask[idx_x+1][idx_y]] = 1
-                adjacent[mask[idx_x+1][idx_y], mask[idx_x][idx_y]] = 1
-            # Check Top-Down
-            if mask[idx_x][idx_y] != mask[idx_x][idx_y+1]:
-                adjacent[mask[idx_x][idx_y], mask[idx_x][idx_y+1]] = 1
-                adjacent[mask[idx_x][idx_y+1], mask[idx_x][idx_y]] = 1
-
-    # From the upper triangle of the matrix list out a unique set of
-    # edges for the pixels
-    edges = np.zeros((np.sum(adjacent) / 2, 2))
-    idx_edge = 0
-    for idx_x in range(0, adjacent.shape[0]):
-        for idx_y in range(idx_x, adjacent.shape[1]):
-            if adjacent[idx_x, idx_y]:
-                edges[idx_edge, 0] = idx_x
-                edges[idx_edge, 1] = idx_y
-                idx_edge += 1
-    return edges
 
 def preprocess_image(
 	image, true_depth=None,
@@ -585,164 +474,12 @@ def preprocess_image(
 	if true_depth is not None:
 		segment_depths = \
 			gather_depths(true_depth,
-					centroids=centroids,
+					centroids=centroids,depth_bins=depth_bins,depth_min=depth_min,depth_max=depth_max,
 					mask=masks,
 					x_window_size=x_window_size,
 					y_window_size=y_window_size,
-					depth_type=depth_type,
-					depth_bins=depth_bins,
-					depth_min=depth_min,
-					depth_max=depth_max)
-
+					depth_type=depth_type)
 	if true_depth is not None:
  		return image_segments, masks, segment_depths, centroids
  	else:
  		return image_segments, masks, centroids
-
-def logistic_vector_dist(vector1, vector2, gamma=1):
-	"""
-	Take two vectors, take their L2 norm, and then logistically regress that
-	value to keep the result between 0 and 1.  gamma is a parameter that
-	controls the scaling between 0 and 1 (although 0 only reached
-	asymmtotically).
-	"""
-	if not np.all(vector1.shape == vector2.shape):
-		raise ValueError('Inputs are not the same shape.')
-	return np.exp(-gamma * np.linalg.norm(vector2.ravel() - vector1.ravel()))
-
-def hist_colors(image, color_bins=256, color_min=0, color_max=255):
-	"""
-	Generate histograms of the colors contained within an image, which
-	are assumed to be in the first axis.  Any number of colors are allowed.
-	"""
-	color_hist = np.zeros((image.shape[0], color_bins))
-	color_flat = np.reshape(image, (image.shape[0], -1))
-	for color_idx in range(0, image.shape[0]):
-		color_hist[color_idx, :] = np.histogram(color_flat[color_idx, :],
-												color_bins,
-												(color_min, color_max))[0]
-	return color_hist
-
-
-def logistic_color_hist_diff(
-	image1, 
-	image2, 
-	color_bins=256, 
-	color_min=0, 
-	color_max=255, 
-	gamma=1e-4):
-	"""
-	Compare the logistically regressed distance between the color content of
-	two images by taking the histograms of the provided images, assuming the
-	color is placed in axis=0. gamma chosen purely hearuistically to provide
-	decent dynamic range as seen in image_handling_tb.ipynb, figure 14.
-	"""
-	return logistic_vector_dist(
-		hist_colors(image1, color_bins, color_min, color_max),
-		hist_colors(image2, color_bins, color_min, color_max),
-		gamma)
-
-
-def logistic_color_diff(image1, image2, gamma=4e-5):
-	"""
-	Generate a logistically regressed distance between two color images.
-	gamma chosen purely hearuistically to provide decent dynamic range
-	as seen in image_handling_tb.ipynb, figure 14.
-	"""
-	return logistic_vector_dist(image1, image2, gamma)
-
-
-def logistic_lbp_diff(image1, image2, gamma=1e-3, points=4, radius=2):
-	"""
-	Generate local binary patterns (LBP) for each of the images by taking the 
-	average across the color components (assumed to be axis = 0), and then
-	generating a LBP using a given number of points and comparing at a given
-	radius away from the center of the image.  The distance between the LBPs
-	is regressed.  gamma, points, and radius defaults chosen purely
-	hearuistically to provide decent dynamic range as seen in
-	image_handling_tb.ipynb, figure 14.
-	"""
-	return logistic_vector_dist(
-		local_binary_pattern(np.average(image1, axis=0), points, radius),
-		local_binary_pattern(np.average(image2, axis=0), points, radius),
-		gamma)
-
-
-def pairwise_distance_matrices(segments, edges=None, mask=None):
-	"""
-	Given a number of segments and the edges that connect them, or a mask from
-	which a set of edges that connect neighbors can be defined, this generates
-	a 3xlen(segments)xlen(segments) listing the distance between all of the
-	different segments.  The [i, j, k] value of the returned array represents
-	the ith type of distance metric between segments j and k.  If the segments
-	are not neighbors then the distance is left as zero.  The 3 distance
-	metrics are, 1, the logistic color difference, 2, the logistic color
-	histogram difference, and, 3, the local binary pattern difference.
-	"""
-	no_segments = len(segments)
-	distances = np.zeros((3, no_segments, no_segments))
-
-	if edges is None:
-		if mask is None:
-			raise ValueError('Neither edges nor mask provided')
-		else:
-			edges = find_neighbors(mask)
-
-	for edge in edges:
-	    distances[0, edge[0], edge[1]] = \
-	    	logistic_color_diff(segments[edge[0], ...],
-	    						segments[edge[1], ...])
-	    distances[1, edge[0], edge[1]] = \
-	    	logistic_color_hist_diff(segments[edge[0], ...],
-	    							 segments[edge[1], ...])
-	    distances[2, edge[0], edge[1]] = \
-	    	logistic_lbp_diff(segments[edge[0], ...],
-	    					  segments[edge[1], ...])
-
-	return distances
-
-
-def graph_cut_pairwise_array(
-		segments,
-		edges=None,
-		mask=None,
-		distance_type=1):
-	"""
-	Given a number of segments and the edges that connect them, or a mask from
-	which a set of edges that connect neighbors can be defined, this generates
-	an array len(edges)x3 listing the distance between all of the edges. The
-	first two columns represent the edges of the graph and the third column is
-	the edge weight. The 3 distance metrics are, 0, the logistic color
-	difference, 1, the logistic color histogram difference (default), and, 2,
-	the local binary pattern difference.
-	"""
-	no_segments = len(segments)
-
-	if edges is None:
-		if mask is None:
-			raise ValueError('Neither edges nor mask provided')
-		else:
-			edges = find_neighbors(mask)
-
-	graph_cut_array = np.zeros((edges.shape[0], edges.shape[1] + 1))
-	graph_cut_array[:, 0:edges.shape[1]] = edges
-
-	edge_idx = 0
-	for edge in edges:
-		if distance_type == 0:
-			graph_cut_array[edge_idx, -1] = \
-	    		logistic_color_diff(segments[edge[0], ...],
-	    						segments[edge[1], ...])
-		elif distance_type == 1:
-			graph_cut_array[edge_idx, -1] = \
-				logistic_color_hist_diff(segments[edge[0], ...],
-										 segments[edge[1], ...])
-		elif distance_type == 2:
-			graph_cut_array[edge_idx, -1] = \
-				logistic_lbp_diff(segments[edge[0], ...],
-								  segments[edge[1], ...])
-		else:
-			raise ValueError('Invalid distance_type of %d given' % distance_type)
-		edge_idx += 1
-	return graph_cut_array
-
